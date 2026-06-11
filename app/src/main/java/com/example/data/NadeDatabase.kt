@@ -35,6 +35,15 @@ data class FavoriteNadeEntity(
     val savedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "user_feedbacks")
+data class FeedbackEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val type: String, // "Bug", "Suggestion", "Other"
+    val rating: Int, // 1 to 5
+    val message: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 // 2. DAOs
 @Dao
 interface CustomNadeDao {
@@ -60,11 +69,24 @@ interface FavoriteDao {
     suspend fun deleteFavoriteByKey(nakeKey: String)
 }
 
+@Dao
+interface FeedbackDao {
+    @Query("SELECT * FROM user_feedbacks ORDER BY timestamp DESC")
+    fun getAllFeedbacks(): Flow<List<FeedbackEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFeedback(feedback: FeedbackEntity)
+
+    @Query("DELETE FROM user_feedbacks")
+    suspend fun deleteAllFeedbacks()
+}
+
 // 3. Database
-@Database(entities = [CustomNadeEntity::class, FavoriteNadeEntity::class], version = 2, exportSchema = false)
+@Database(entities = [CustomNadeEntity::class, FavoriteNadeEntity::class, FeedbackEntity::class], version = 3, exportSchema = false)
 abstract class NadeDatabase : RoomDatabase() {
     abstract fun customNadeDao(): CustomNadeDao
     abstract fun favoriteDao(): FavoriteDao
+    abstract fun feedbackDao(): FeedbackDao
 
     companion object {
         @Volatile
@@ -91,6 +113,7 @@ abstract class NadeDatabase : RoomDatabase() {
 class NadeRepository(private val db: NadeDatabase) {
     val customNades: Flow<List<CustomNadeEntity>> = db.customNadeDao().getAllCustomNades()
     val favorites: Flow<List<FavoriteNadeEntity>> = db.favoriteDao().getAllFavorites()
+    val feedbacks: Flow<List<FeedbackEntity>> = db.feedbackDao().getAllFeedbacks()
 
     suspend fun insertCustomNade(nade: CustomNadeEntity) {
         db.customNadeDao().insertCustomNade(nade)
@@ -106,5 +129,13 @@ class NadeRepository(private val db: NadeDatabase) {
         } else {
             db.favoriteDao().deleteFavoriteByKey(nadeKey)
         }
+    }
+
+    suspend fun insertFeedback(feedback: FeedbackEntity) {
+        db.feedbackDao().insertFeedback(feedback)
+    }
+
+    suspend fun clearFeedbacks() {
+        db.feedbackDao().deleteAllFeedbacks()
     }
 }

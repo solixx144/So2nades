@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
 import com.example.data.CustomNadeEntity
+import com.example.data.FeedbackEntity
 import com.example.data.DefaultNade
 import com.example.data.DefaultNades
 import com.example.data.GeminiApiService
@@ -88,6 +89,13 @@ class NadeViewModel(application: Application) : AndroidViewModel(application) {
     // Raw Room flows
     private val customNades = repository.customNades
     private val favorites = repository.favorites
+
+    // Feedback flow
+    val feedbackList: StateFlow<List<FeedbackEntity>> = repository.feedbacks.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     // Combined UI lists
     val nadesUiList: StateFlow<List<NadeUiItem>> = combine(
@@ -302,6 +310,24 @@ class NadeViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 isChatLoading.value = false
             }
+        }
+    }
+
+    fun submitFeedback(type: String, rating: Int, message: String) {
+        viewModelScope.launch {
+            repository.insertFeedback(
+                FeedbackEntity(
+                    type = type,
+                    rating = rating,
+                    message = message
+                )
+            )
+        }
+    }
+
+    fun clearAllFeedbacks() {
+        viewModelScope.launch {
+            repository.clearFeedbacks()
         }
     }
 }
