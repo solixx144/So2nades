@@ -77,6 +77,9 @@ interface FeedbackDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFeedback(feedback: FeedbackEntity)
 
+    @Query("DELETE FROM user_feedbacks WHERE id = :id")
+    suspend fun deleteFeedbackById(id: Int)
+
     @Query("DELETE FROM user_feedbacks")
     suspend fun deleteAllFeedbacks()
 }
@@ -133,6 +136,10 @@ class NadeRepository(private val db: NadeDatabase) {
 
     suspend fun insertFeedback(feedback: FeedbackEntity) {
         db.feedbackDao().insertFeedback(feedback)
+    }
+
+    suspend fun deleteFeedback(id: Int) {
+        db.feedbackDao().deleteFeedbackById(id)
     }
 
     suspend fun clearFeedbacks() {

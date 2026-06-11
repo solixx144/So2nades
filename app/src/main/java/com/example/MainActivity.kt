@@ -115,6 +115,7 @@ fun NadeAppScreen(
     var showAddForm by remember { mutableStateOf(false) }
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showFeedbackDialog by remember { mutableStateOf(false) }
+    var showAdminDashboardDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -152,7 +153,7 @@ fun NadeAppScreen(
             isAdminActive = isAdminActive,
             onToggleAdminClick = {
                 if (isAdminActive) {
-                    viewModel.isAdminMode.value = false
+                    showAdminDashboardDialog = true
                 } else {
                     showAdminPasswordDialog = true
                 }
@@ -257,6 +258,17 @@ fun NadeAppScreen(
         FeedbackDialog(
             viewModel = viewModel,
             onDismiss = { showFeedbackDialog = false }
+        )
+    }
+
+    if (showAdminDashboardDialog) {
+        AdminDashboardDialog(
+            viewModel = viewModel,
+            onDismiss = { showAdminDashboardDialog = false },
+            onAddLineupClick = { 
+                showAdminDashboardDialog = false
+                showAddForm = true
+            }
         )
     }
 }
@@ -872,6 +884,36 @@ fun InteractiveMinimapRadar(
     modifier: Modifier = Modifier
 ) {
     var selectedNadePin by remember(mapName) { mutableStateOf<NadeUiItem?>(null) }
+
+    // Preconstruct Paint objects for drawing text elements to maximize frame rate (works on all phones, zero FPS drops)
+    val siteLabelPaint = remember {
+        Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 34f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+    }
+    val midLabelPaint = remember {
+        Paint().apply {
+            color = android.graphics.Color.YELLOW
+            textSize = 21f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+    }
+    val tSpawnPaint = remember {
+        Paint().apply {
+            color = android.graphics.Color.argb(120, 200, 130, 29)
+            textSize = 24f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+    }
+    val ctSpawnPaint = remember {
+        Paint().apply {
+            color = android.graphics.Color.argb(120, 59, 103, 144)
+            textSize = 24f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+    }
     
     // Pulse animation
     val infiniteTransition = rememberInfiniteTransition(label = "pulse_radar")
@@ -1042,16 +1084,8 @@ fun InteractiveMinimapRadar(
                         drawLine(color = layoutColor, start = Offset(0.35f * size.width, 0.52f * size.height), end = Offset(0.65f * size.width, 0.52f * size.height), strokeWidth = 12f)
                         
                         // Spawn landmarks
-                        drawContext.canvas.nativeCanvas.drawText("T SPAWN", 0.22f * size.width, 0.88f * size.height, Paint().apply {
-                            color = android.graphics.Color.argb(120, 200, 130, 29)
-                            textSize = 24f
-                            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        })
-                        drawContext.canvas.nativeCanvas.drawText("CT SPAWN", 0.50f * size.width, 0.88f * size.height, Paint().apply {
-                            color = android.graphics.Color.argb(120, 59, 103, 144)
-                            textSize = 24f
-                            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        })
+                        drawContext.canvas.nativeCanvas.drawText("T SPAWN", 0.22f * size.width, 0.88f * size.height, tSpawnPaint)
+                        drawContext.canvas.nativeCanvas.drawText("CT SPAWN", 0.50f * size.width, 0.88f * size.height, ctSpawnPaint)
                     }
                     "Provinces" -> {
                         // Tunnels, Fountain, Plaza layout
@@ -1107,19 +1141,8 @@ fun InteractiveMinimapRadar(
                 )
 
                 // Site Labels
-                val siteLabelPaint = Paint().apply {
-                    color = android.graphics.Color.WHITE
-                    textSize = 34f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                }
                 drawContext.canvas.nativeCanvas.drawText("A", siteAOffset.x, siteAOffset.y + 11f, siteLabelPaint)
                 drawContext.canvas.nativeCanvas.drawText("B", siteBOffset.x, siteBOffset.y + 11f, siteLabelPaint)
-                
-                val midLabelPaint = Paint().apply {
-                    color = android.graphics.Color.YELLOW
-                    textSize = 21f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                }
                 drawContext.canvas.nativeCanvas.drawText("MID", siteMidOffset.x, siteMidOffset.y + 7f, midLabelPaint)
 
                 // D. DRAW THE FLYING TRAJECTORY ARROW IF PIN IS SELECTED
@@ -3571,3 +3594,742 @@ fun FeedbackDialog(
         }
     }
 }
+
+// ======================= DECORATIVE DYNAMIC ADMIN DASHBOARD =======================
+
+@Composable
+fun AdminDashboardDialog(
+    viewModel: NadeViewModel,
+    onDismiss: () -> Unit,
+    onAddLineupClick: () -> Unit
+) {
+    val feedbacks by viewModel.feedbackList.collectAsState()
+    val customNadesList by viewModel.customNadesList.collectAsState()
+    
+    // Theme and control configurations
+    var activeSubSection by remember { mutableStateOf("overview") } // "overview", "tactics", "feedbacks"
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedMapFilter by remember { mutableStateOf("All") }
+    var feedbackSearchQuery by remember { mutableStateOf("") }
+    var selectedFeedbackTypeFilter by remember { mutableStateOf("All") }
+
+    // Dynamic localization values
+    val searchPlaceholderText = when (L10n.currentLang) {
+        "Türkçe" -> "Taktiklerde veya haritalarda ara..."
+        "Русский" -> "Поиск тактик и карт..."
+        else -> "Search custom tactics..."
+    }
+    val feedbackSearchPlaceholderText = when (L10n.currentLang) {
+        "Türkçe" -> "Raporlarda veya mesajlarda ara..."
+        "Русский" -> "Поиск в отзывах и сообщениях..."
+        else -> "Search feedback reports..."
+    }
+    val mapFilterLabel = when (L10n.currentLang) {
+        "Türkçe" -> "HARİTA SEÇ"
+        "Русский" -> "ВЫБОР КАРТЫ"
+        else -> "FILTER BY MAP"
+    }
+    val typeFilterLabel = when (L10n.currentLang) {
+        "Türkçe" -> "RAPOR TÜRÜ"
+        "Русский" -> "ТИП ОТЧЕТА"
+        else -> "FILTER BY TYPE"
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.88f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(CsDarkBackground)
+                .border(2.dp, CsOrange, RoundedCornerShape(8.dp)),
+            color = CsDarkBackground
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Dashboard Header (Standoff 2 Matte Slate Header with Gold Trim)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings Icon",
+                                tint = CsOrange,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = L10n.t("admin_hub_title"),
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = L10n.t("admin_hub_desc"),
+                            color = CsTextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .testTag("admin_hub_close")
+                            .background(CsSurfaceVariant, CircleShape)
+                            .size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Dashboard",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Navigation Tabs - Metallic Plate Style
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(CsSurface, RoundedCornerShape(4.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    listOf("overview", "tactics", "feedbacks").forEach { section ->
+                        val isSelected = activeSubSection == section
+                        val sectionLabel = when (section) {
+                            "overview" -> L10n.t("admin_stats")
+                            "tactics" -> L10n.t("admin_custom_nades")
+                            else -> L10n.t("admin_feedback")
+                        }
+                        
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isSelected) CsOrange else Color.Transparent)
+                                .clickable { 
+                                    activeSubSection = section 
+                                    // Reset local query states when shifting sections
+                                    searchQuery = ""
+                                    feedbackSearchQuery = ""
+                                }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = sectionLabel.uppercase(),
+                                color = if (isSelected) CsDarkBackground else CsTextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Main Dashboard Body
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (activeSubSection) {
+                        "overview" -> {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Dynamic Database Stats Cards
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = CsSurface),
+                                            border = BorderStroke(1.dp, CsSurfaceVariant)
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Text(
+                                                    text = if (L10n.currentLang == "Türkçe") "ÖZEL LİNEUPLAR" else if (L10n.currentLang == "Русский") "КАСТОМНЫЕ ТАКТИКИ" else "CUSTOM LINEUPS",
+                                                    color = CsTextSecondary,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "${customNadesList.size}",
+                                                    color = CsOrange,
+                                                    fontSize = 26.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = CsSurface),
+                                            border = BorderStroke(1.dp, CsSurfaceVariant)
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Text(
+                                                    text = if (L10n.currentLang == "Türkçe") "GERİ BİLDİRİMLER" else if (L10n.currentLang == "Русский") "ЖАЛОБЫ И ИДЕИ" else "USER REPORTS",
+                                                    color = CsTextSecondary,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "${feedbacks.size}",
+                                                    color = CsOrangeGlow,
+                                                    fontSize = 26.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Quick Actions Panel (Metal Container)
+                                item {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = CsSurface),
+                                        border = BorderStroke(1.dp, CsSurfaceVariant)
+                                    ) {
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            Text(
+                                                text = if (L10n.currentLang == "Türkçe") "HIZLI YÖNETİM SEÇENEKLERİ" else if (L10n.currentLang == "Русский") "БЫСТРЫЕ ДЕЙСТВИЯ" else "OPERATIONAL QUICK ACTIONS",
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 1.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(14.dp))
+                                            
+                                            // Add Lineup Quick Link
+                                            Button(
+                                                onClick = onAddLineupClick,
+                                                modifier = Modifier.fillMaxWidth().testTag("add_lineup_quick_btn"),
+                                                colors = ButtonDefaults.buttonColors(containerColor = CsOrange),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = "Add Icon",
+                                                    tint = CsDarkBackground,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = L10n.t("add_lineup_quick").uppercase(),
+                                                    color = CsDarkBackground,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(10.dp))
+
+                                            // Log out / de-activate administrator mode
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.isAdminMode.value = false
+                                                    onDismiss()
+                                                },
+                                                modifier = Modifier.fillMaxWidth().testTag("admin_deactivate_btn"),
+                                                border = BorderStroke(1.dp, CsErrorRed),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = CsErrorRed),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ExitToApp,
+                                                    contentDescription = "Exit Icon",
+                                                    tint = CsErrorRed,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = L10n.t("admin_logout").uppercase(),
+                                                    color = CsErrorRed,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Security Guidelines Quick-look
+                                item {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = CsSurfaceVariant.copy(0.4f)),
+                                        border = BorderStroke(1.dp, CsSurfaceVariant.copy(0.5f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = "Verified status",
+                                                    tint = CsOrange,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = if (L10n.currentLang == "Türkçe") "Taktik Taban Kontrolü" else if (L10n.currentLang == "Русский") "Контроль Базы Версий" else "Tactical Catalog Guidelines",
+                                                    color = Color.White,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = if (L10n.currentLang == "Türkçe") "Oluşturduğunuz tüm özel taktikler, katalog sayfasında sadece yönetici modunda değil, normal kullanıcı modunda da 'ÖZEL' etiketiyle tüm kullanıcılara canlı olarak sunulur."
+                                                       else if (L10n.currentLang == "Русский") "Все добавленные вами тактики мгновенно становятся видны всем пользователям в каталоге с пометкой 'КАСТОМ'." 
+                                                       else "All custom lineups you submit are universally saved locally in the SQL database, integrated instantly with the client viewport, and filterable from the primary Catalog dashboard tab.",
+                                                color = CsTextSecondary,
+                                                fontSize = 10.sp,
+                                                lineHeight = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        "tactics" -> {
+                            val activeMaps = listOf("All", "Sandstone", "Hanami", "Rust", "Prison", "Dune", "Breeze", "Provinces")
+                            val filteredNades = customNadesList.filter { nade ->
+                                val matchesMap = selectedMapFilter == "All" || nade.map.equals(selectedMapFilter, ignoreCase = true)
+                                val matchesQuery = searchQuery.isEmpty() || 
+                                        nade.title.contains(searchQuery, ignoreCase = true) || 
+                                        nade.description.contains(searchQuery, ignoreCase = true) || 
+                                        nade.map.contains(searchQuery, ignoreCase = true) ||
+                                        nade.type.contains(searchQuery, ignoreCase = true)
+                                matchesMap && matchesQuery
+                            }
+
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                // Real-time Search Box
+                                TextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    placeholder = {
+                                        Text(text = searchPlaceholderText, color = CsTextSecondary, fontSize = 11.sp)
+                                    },
+                                    singleLine = true,
+                                    leadingIcon = {
+                                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = CsOrange, modifier = Modifier.size(16.dp))
+                                    },
+                                    trailingIcon = {
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { searchQuery = "" }) {
+                                                Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = CsTextSecondary, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    colors = TextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedContainerColor = CsSurface,
+                                        unfocusedContainerColor = CsSurface,
+                                        disabledContainerColor = CsSurface,
+                                        focusedIndicatorColor = CsOrange,
+                                        unfocusedIndicatorColor = Color.Transparent
+                                    ),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("tactics_search_input")
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Dynamic Map Horizontal Filter Chips
+                                Text(
+                                    text = mapFilterLabel,
+                                    color = CsTextSecondary,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(activeMaps.size) { index ->
+                                        val mapItem = activeMaps[index]
+                                        val isSelected = selectedMapFilter == mapItem
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isSelected) CsOrange else CsSurface)
+                                                .border(1.dp, if (isSelected) CsOrange else CsSurfaceVariant, RoundedCornerShape(4.dp))
+                                                .clickable { selectedMapFilter = mapItem }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = mapItem.uppercase(),
+                                                color = if (isSelected) CsDarkBackground else Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // List Content
+                                if (filteredNades.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                imageVector = Icons.Default.Info,
+                                                contentDescription = "No results",
+                                                tint = CsTextSecondary.copy(0.4f),
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = if (L10n.currentLang == "Türkçe") "Arama kriterlerine uygun özel taktik bulunamadı."
+                                                       else if (L10n.currentLang == "Русский") "Нет результатов по заданным фильтрам."
+                                                       else "No matching custom tactics found.",
+                                                color = CsTextSecondary,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(filteredNades.size) { index ->
+                                            val nade = filteredNades[index]
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth().testTag("custom_nade_admin_card_${nade.id}"),
+                                                colors = CardDefaults.cardColors(containerColor = CsSurface),
+                                                border = BorderStroke(1.dp, CsSurfaceVariant)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .background(CsOrange, RoundedCornerShape(2.dp))
+                                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = nade.map.uppercase(),
+                                                                    color = CsDarkBackground,
+                                                                    fontSize = 8.sp,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = nade.type.uppercase(),
+                                                                color = CsTextSecondary,
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = nade.side.uppercase(),
+                                                                color = if (nade.side.lowercase() == "allies" || nade.side.lowercase() == "ct") CsCtBlue else CsTOrange,
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        Text(
+                                                            text = nade.title,
+                                                            color = Color.White,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Text(
+                                                            text = nade.description,
+                                                            color = CsTextSecondary,
+                                                            fontSize = 10.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+
+                                                    IconButton(
+                                                        onClick = { viewModel.deleteCustomNade(nade.id.toString()) },
+                                                        modifier = Modifier
+                                                            .testTag("delete_custom_nade_${nade.id}")
+                                                            .size(32.dp)
+                                                            .background(CsErrorRed.copy(0.12f), CircleShape)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "Delete setup",
+                                                            tint = CsErrorRed,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        "feedbacks" -> {
+                            val activeCategories = listOf("All", "Bug", "Suggestion", "Other")
+                            val filteredFeedbacks = feedbacks.filter { fb ->
+                                val matchesType = when (selectedFeedbackTypeFilter) {
+                                    "All" -> true
+                                    "Bug" -> fb.type.startsWith("Bug", ignoreCase = true) || fb.type.contains("Hata", ignoreCase = true) || fb.type.contains("Баг", ignoreCase = true)
+                                    "Suggestion" -> fb.type.contains("Suggest", ignoreCase = true) || fb.type.contains("Öner", ignoreCase = true) || fb.type.contains("Предлож", ignoreCase = true)
+                                    else -> fb.type.contains("Other", ignoreCase = true) || fb.type.contains("Genel", ignoreCase = true) || fb.type.contains("Идея", ignoreCase = true)
+                                }
+                                val matchesQuery = feedbackSearchQuery.isEmpty() || 
+                                        fb.message.contains(feedbackSearchQuery, ignoreCase = true) || 
+                                        fb.type.contains(feedbackSearchQuery, ignoreCase = true)
+                                matchesType && matchesQuery
+                            }
+
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                // Feedback Search Input
+                                TextField(
+                                    value = feedbackSearchQuery,
+                                    onValueChange = { feedbackSearchQuery = it },
+                                    placeholder = {
+                                        Text(text = feedbackSearchPlaceholderText, color = CsTextSecondary, fontSize = 11.sp)
+                                    },
+                                    singleLine = true,
+                                    leadingIcon = {
+                                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = CsOrange, modifier = Modifier.size(16.dp))
+                                    },
+                                    trailingIcon = {
+                                        if (feedbackSearchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { feedbackSearchQuery = "" }) {
+                                                Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = CsTextSecondary, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    colors = TextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedContainerColor = CsSurface,
+                                        unfocusedContainerColor = CsSurface,
+                                        disabledContainerColor = CsSurface,
+                                        focusedIndicatorColor = CsOrange,
+                                        unfocusedIndicatorColor = Color.Transparent
+                                    ),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("feedback_search_input")
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Feedback Type Selection Filter Row
+                                Text(
+                                    text = typeFilterLabel,
+                                    color = CsTextSecondary,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(activeCategories.size) { index ->
+                                        val cat = activeCategories[index]
+                                        val isSelected = selectedFeedbackTypeFilter == cat
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isSelected) CsOrange else CsSurface)
+                                                .border(1.dp, if (isSelected) CsOrange else CsSurfaceVariant, RoundedCornerShape(4.dp))
+                                                .clickable { selectedFeedbackTypeFilter = cat }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = cat.uppercase(),
+                                                color = if (isSelected) CsDarkBackground else Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Archive / Reset and Count indicators header
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = (if (L10n.currentLang == "Türkçe") "RAPORLAR (${filteredFeedbacks.size})"
+                                               else if (L10n.currentLang == "Русский") "ОТЧЕТЫ (${filteredFeedbacks.size})"
+                                               else "REPORTS (${filteredFeedbacks.size})").uppercase(),
+                                        color = CsTextSecondary,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    
+                                    if (feedbacks.isNotEmpty()) {
+                                        Text(
+                                            text = L10n.t("delete_confirm").uppercase() + " " + L10n.t("admin_feedback").uppercase(),
+                                            color = CsErrorRed,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .clickable { viewModel.clearAllFeedbacks() }
+                                                .testTag("admin_bulk_clear_feedback")
+                                        )
+                                    }
+                                }
+
+                                if (filteredFeedbacks.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Success status",
+                                                tint = CsSuccessGreen.copy(0.4f),
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = if (L10n.currentLang == "Türkçe") "Tüm geri bildirimler temizlendi veya çözüldü!"
+                                                       else if (L10n.currentLang == "Русский") "Все отчеты обработаны или решены!"
+                                                       else "All user feedback claims resolved!",
+                                                color = CsTextSecondary,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(filteredFeedbacks.size) { index ->
+                                            val fb = filteredFeedbacks[index]
+                                            val isBug = fb.type.startsWith("Bug", ignoreCase = true) || 
+                                                        fb.type.contains("Hata", ignoreCase = true) || 
+                                                        fb.type.contains("Баг", ignoreCase = true)
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth().testTag("feedback_admin_card_${fb.id}"),
+                                                colors = CardDefaults.cardColors(containerColor = CsSurface),
+                                                border = BorderStroke(1.dp, if (isBug) CsErrorRed.copy(0.3f) else CsSurfaceVariant)
+                                            ) {
+                                                Column(modifier = Modifier.padding(12.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .background(
+                                                                        if (isBug) CsErrorRed.copy(0.12f) else CsOrange.copy(0.12f),
+                                                                        RoundedCornerShape(2.dp)
+                                                                    )
+                                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = fb.type.uppercase(),
+                                                                    color = if (isBug) CsErrorRed else CsOrange,
+                                                                    fontSize = 8.sp,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Row {
+                                                                (1..5).forEach { star ->
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Star,
+                                                                        contentDescription = null,
+                                                                        tint = if (star <= fb.rating) CsYellow else CsTextSecondary.copy(0.2f),
+                                                                        modifier = Modifier.size(10.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Clear / Resolve singular feedback btn
+                                                        Text(
+                                                            text = L10n.t("resolve").uppercase(),
+                                                            color = CsSuccessGreen,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier
+                                                                .clickable { viewModel.deleteFeedback(fb.id) }
+                                                                .testTag("admin_resolve_feedback_${fb.id}")
+                                                        )
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = fb.message,
+                                                        color = Color.White,
+                                                        fontSize = 11.sp,
+                                                        lineHeight = 15.sp
+                                                    )
+                                                    
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(fb.timestamp)),
+                                                        color = CsTextSecondary,
+                                                        fontSize = 8.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

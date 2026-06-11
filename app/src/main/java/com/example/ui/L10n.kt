@@ -86,7 +86,16 @@ object L10n {
         "type_bug" to "Bug / Issue",
         "type_suggest" to "Lineup Suggestion",
         "type_other" to "General Idea",
-        "character_count" to "Feedback Details"
+        "character_count" to "Feedback Details",
+        "admin_hub_title" to "ADMIN CONTROL CENTER",
+        "admin_hub_desc" to "Manage user bug reports, custom tactical lineups, and monitor database statistics.",
+        "admin_logout" to "DEACTIVATE ADMIN MODE",
+        "admin_stats" to "HUB OVERVIEW",
+        "admin_custom_nades" to "TACTICS MANAGER",
+        "admin_feedback" to "USER FEEDBACKS",
+        "add_lineup_quick" to "ADD NEW LINEUP",
+        "delete_confirm" to "DELETE",
+        "resolve" to "RESOLVE ACTION"
     )
 
     private val tr = mapOf(
@@ -172,7 +181,16 @@ object L10n {
         "type_bug" to "Hata / Teknik Sorun",
         "type_suggest" to "Lineup / Taktik Önerisi",
         "type_other" to "Genel Görüş / Fikir",
-        "character_count" to "Geri Bildirim Detayları"
+        "character_count" to "Geri Bildirim Detayları",
+        "admin_hub_title" to "ADMİN KONTROL MERKEZİ",
+        "admin_hub_desc" to "Hata bildirimlerini, özel taktik bombaları yönetin ve veritabanı istatistiklerini izleyin.",
+        "admin_logout" to "ADMİN MODUNU KAPAT",
+        "admin_stats" to "GENEL GÖSTERGELER",
+        "admin_custom_nades" to "TAKTIK YÖNETİCİSİ",
+        "admin_feedback" to "GERİ BİLDİRİMLER",
+        "add_lineup_quick" to "YENİ TAKTİK EKLE",
+        "delete_confirm" to "SİL",
+        "resolve" to "ÇÖZÜME ULAŞTIR"
     )
 
     private val ru = mapOf(
@@ -258,7 +276,16 @@ object L10n {
         "type_bug" to "Баг / Ошибка на карте",
         "type_suggest" to "Предложить новую раскидку",
         "type_other" to "Идея / Другие отзывы",
-        "character_count" to "Детали отзыва"
+        "character_count" to "Детали отзыва",
+        "admin_hub_title" to "ЦЕНТР УПРАВЛЕНИЯ АДМИНА",
+        "admin_hub_desc" to "Управление отчетами об ошибках, тактическими раскидками и просмотр статистики базы.",
+        "admin_logout" to "ОТКЛЮЧИТЬ РЕЖИМ АДМИНА",
+        "admin_stats" to "ОБЗОР ХАБА",
+        "admin_custom_nades" to "МЕНЕДЖЕР ТАКТИК",
+        "admin_feedback" to "ОТЗЫВЫ ПОЛЬЗОВАТЕЛЕЙ",
+        "add_lineup_quick" to "ДОБАВИТЬ РАСКИДКУ",
+        "delete_confirm" to "УДАЛИТЬ",
+        "resolve" to "ОБРАБОТАТЬ"
     )
 
     fun t(key: String): String {

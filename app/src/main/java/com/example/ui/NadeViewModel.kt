@@ -68,14 +68,28 @@ class NadeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = NadeDatabase.getDatabase(application)
     private val repository = NadeRepository(db)
+    private val prefs = application.getSharedPreferences("nade_preferences", android.content.Context.MODE_PRIVATE)
 
     // Filter flows
-    val selectedMap = MutableStateFlow("All")
+    val selectedMap = MutableStateFlow(prefs.getString("saved_selected_map", "All") ?: "All")
     val selectedType = MutableStateFlow("All")
     val selectedSide = MutableStateFlow("All")
     val searchQuery = MutableStateFlow("")
     val isAdminMode = MutableStateFlow(false)
-    val selectedLanguage = MutableStateFlow("English")
+    val selectedLanguage = MutableStateFlow(prefs.getString("saved_selected_lang", "English") ?: "English")
+
+    init {
+        viewModelScope.launch {
+            selectedLanguage.collect { lang ->
+                prefs.edit().putString("saved_selected_lang", lang).apply()
+            }
+        }
+        viewModelScope.launch {
+            selectedMap.collect { map ->
+                prefs.edit().putString("saved_selected_map", map).apply()
+            }
+        }
+    }
 
     private val filtersFlow = combine(
         selectedMap,
@@ -89,6 +103,13 @@ class NadeViewModel(application: Application) : AndroidViewModel(application) {
     // Raw Room flows
     private val customNades = repository.customNades
     private val favorites = repository.favorites
+
+    // Expose all custom lineups as a state flow for the admin dashboard
+    val customNadesList: StateFlow<List<CustomNadeEntity>> = customNades.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     // Feedback flow
     val feedbackList: StateFlow<List<FeedbackEntity>> = repository.feedbacks.stateIn(
@@ -322,6 +343,12 @@ class NadeViewModel(application: Application) : AndroidViewModel(application) {
                     message = message
                 )
             )
+        }
+    }
+
+    fun deleteFeedback(id: Int) {
+        viewModelScope.launch {
+            repository.deleteFeedback(id)
         }
     }
 
