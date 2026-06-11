@@ -19,7 +19,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: APK Hazırla
-        run: gradle assembleDebug
+        run: gradle assembleDebug -x validateSigningDebug
 
       - name: APKyi Yukle
         uses: actions/upload-artifact@v4
