@@ -1,0 +1,6 @@
+{
+  "name": "so2nades",
+  "description": "Standoff 2 utility lineup helper, tactical strat planner, custom video/photo logger, and interactive Gemini tactical advisor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
