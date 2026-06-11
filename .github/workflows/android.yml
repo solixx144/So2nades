@@ -1,23 +1,28 @@
 name: APK Uretici
 on:
   push:
-    branches: [ main, master ] # Kodlarını yüklediğin an çalışır
+    branches: [ main, master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Java Ayarla
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'zulu'
+          
+      - name: Gradle Calistirma Izni Ver
+        run: chmod +x gradlew
+
       - name: APK Hazırla
         run: ./gradlew assembleDebug
+
       - name: APKyi Yukle
         uses: actions/upload-artifact@v4
         with:
           name: standoff2-uygulamam
           path: app/build/outputs/apk/debug/app-debug.apk
-
