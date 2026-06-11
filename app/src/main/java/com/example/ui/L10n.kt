@@ -52,7 +52,27 @@ object L10n {
         "temp_suggestion" to "Temporary Tactical Suggestion",
         "normal_user" to "Normal User Mode",
         "admin_active" to "Admin Mode Active",
-        "add_lineup_desc" to "Add your own custom lineup video stream or cover photo directly."
+        "add_lineup_desc" to "Add your own custom lineup video stream or cover photo directly.",
+        "sit_room" to "TACTICAL SITUATION ROOM",
+        "match_sit_heading" to "Current Match Situation",
+        "select_map" to "Selected Map",
+        "economy" to "Round Economy",
+        "focus_area" to "Tactical Objective / Area",
+        "enemy_intel" to "Enemy Intelligence / Intel (Optional)",
+        "analyze_scenario" to "GENERATE TACTICAL EXECUTING PROTOCOL",
+        "allies" to "Allies (CT / Defense)",
+        "rivals" to "Rivals (T / Attack)",
+        "full_buy" to "Full Buy (Rifles + Nades)",
+        "force_buy" to "Force Buy (SMGs/Weapons)",
+        "eco" to "Eco Round (Pistols / Save)",
+        "semi_buy" to "Semi-Buy Round",
+        "execute_a" to "Execute / Defend A Site",
+        "execute_b" to "Execute / Defend B Site",
+        "mid_control" to "Control Mid / Center",
+        "retake_a" to "Retake A Site Bomb Area",
+        "retake_b" to "Retake B Site Bomb Area",
+        "intel_placeholder" to "e.g. enemy sniper holds mid, aggressive long rush every round...",
+        "unlock" to "UNLOCK GATEWAY"
     )
 
     private val tr = mapOf(
@@ -104,7 +124,27 @@ object L10n {
         "temp_suggestion" to "Geçici Taktik Önerisi",
         "normal_user" to "Normal Kullanıcı Modu",
         "admin_active" to "Yönetici Modu Aktif",
-        "add_lineup_desc" to "Kendi özel lineup video yayınınızı veya kapak resminizi doğrudan ekleyin."
+        "add_lineup_desc" to "Kendi özel lineup video yayınınızı veya kapak resminizi doğrudan ekleyin.",
+        "sit_room" to "YAPAY ZEKA STRATEJİ ODASI",
+        "match_sit_heading" to "Anlık Maç Durumu",
+        "select_map" to "Seçili Harita",
+        "economy" to "Round Ekonomisi",
+        "focus_area" to "Taktiksel Hedef / Bölge",
+        "enemy_intel" to "Düşman Durumu / İstihbarat (İsteğe Bağlı)",
+        "analyze_scenario" to "YAPAY ZEKA TAKTİK PROTOKOLÜNÜ OLUŞTUR",
+        "allies" to "Müttefikler (CT / Defans)",
+        "rivals" to "Rakipler (T / Saldırı)",
+        "full_buy" to "Full Buy (Tüfek + Bombalar)",
+        "force_buy" to "Force Buy (Makineliler/Yarı Tam Ekipman)",
+        "eco" to "Eko Round (Tabancalar / Kaydetme)",
+        "semi_buy" to "Yarı-Satın Alma Turu",
+        "execute_a" to "A Bölgesi Taarruz / Savunma Planı",
+        "execute_b" to "B Bölgesi Taarruz / Savunma Planı",
+        "mid_control" to "Mid (Orta Yol) Kontrol Kurma",
+        "retake_a" to "A Bölgesi Bomba Çözme (Retake)",
+        "retake_b" to "B Bölgesi Bomba Çözme (Retake)",
+        "intel_placeholder" to "örn: rakip keskin nişancı mid kapatıyor, hızlı uzun rush'lar yapıyor...",
+        "unlock" to "GEÇİDİ AÇ"
     )
 
     private val ru = mapOf(
@@ -156,7 +196,27 @@ object L10n {
         "temp_suggestion" to "Временная рекомендация",
         "normal_user" to "Режим обычного пользователя",
         "admin_active" to "Режим администратора активен",
-        "add_lineup_desc" to "Добавьте свою собственную тактику, видео или картинку напрямую."
+        "add_lineup_desc" to "Добавьте свою собственную тактику, видео или картинку напрямую.",
+        "sit_room" to "ТАКТИЧЕСКИЙ ШТАБ AI",
+        "match_sit_heading" to "Текущая ситуация в матче",
+        "select_map" to "Выбранная карта",
+        "economy" to "Экономика раунда",
+        "focus_area" to "Тактическая задача / Зона",
+        "enemy_intel" to "Заметки о враге / Интел (Опционально)",
+        "analyze_scenario" to "СГЕНЕРИРОВАТЬ ТАКТИЧЕСКИЙ ПЛАН",
+        "allies" to "Спецназ (Allies - CT / Защита)",
+        "rivals" to "Террористы (Rivals - T / Атака)",
+        "full_buy" to "Бай раунд (Оружие + Гранаты)",
+        "force_buy" to "Форс-бай раунд (ПП/Полузакуп)",
+        "eco" to "Эко-раунд (Пистолеты / Сейв)",
+        "semi_buy" to "Полу-бай раунд",
+        "execute_a" to "Выход / Удержание А-сайта",
+        "execute_b" to "Выход / Удержание Б-сайта",
+        "mid_control" to "Контроль мида (Центра карты)",
+        "retake_a" to "Ретейк А-сайта (Выбивание бомбы)",
+        "retake_b" to "Ретейк Б-сайта (Выбивание бомбы)",
+        "intel_placeholder" to "например: снайпер держит мид, агрессивный фаст-раш лонга каждый раунд...",
+        "unlock" to "РАЗБЛОКИРОВАТЬ ДОСТУП"
     )
 
     fun t(key: String): String {

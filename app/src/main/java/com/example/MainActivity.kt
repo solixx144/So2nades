@@ -1494,6 +1494,334 @@ fun TacticianTabScreen(viewModel: NadeViewModel) {
 
         Spacer(modifier = Modifier.height(10.dp))
 
+        // ----------------- TACTICAL SITUATION ROOM / STRATEGY CALCULATOR -----------------
+        var isSitRoomExpanded by remember { mutableStateOf(true) }
+        val currentSelectedMapState by viewModel.selectedMap.collectAsState()
+        
+        var selectedSituationMap by remember(currentSelectedMapState) {
+            mutableStateOf(if (currentSelectedMapState == "All" || currentSelectedMapState.isEmpty()) "Sandstone" else currentSelectedMapState)
+        }
+        var selectedSide by remember { mutableStateOf("allies") } // "allies" (CT) or "rivals" (T)
+        var selectedEconomy by remember { mutableStateOf("full_buy") } // "full_buy", "force_buy", "eco", "semi_buy"
+        var selectedFocus by remember { mutableStateOf("execute_a") } // "execute_a", "execute_b", "mid_control", "retake_a", "retake_b"
+        var intelText by remember { mutableStateOf("") }
+        
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .testTag("tactical_situation_room_card"),
+            colors = CardDefaults.cardColors(containerColor = CsSurface),
+            border = BorderStroke(1.dp, if (isSitRoomExpanded) CsOrange else CsOrange.copy(0.2f)),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                // Header with Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isSitRoomExpanded = !isSitRoomExpanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isSitRoomExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Expand or collapse situation room",
+                            tint = CsOrange,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = L10n.t("sit_room"),
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSitRoomExpanded) CsOrange.copy(0.15f) else CsSurfaceVariant
+                        ),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = if (isSitRoomExpanded) "COLLAPSE" else "PLAY PLANNER",
+                            color = if (isSitRoomExpanded) CsOrange else CsTextSecondary,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                
+                if (isSitRoomExpanded) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    // Match situation label
+                    Text(
+                        text = L10n.t("match_sit_heading").uppercase(),
+                        color = CsOrangeGlow,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    
+                    // Parameter 1: Select Map
+                    Text(
+                        text = L10n.t("select_map"),
+                        color = CsTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val mapsList = listOf("Sandstone", "Province", "Rust", "Hanami", "Dune", "Breeze")
+                        items(mapsList) { mapName ->
+                            val isSelected = selectedSituationMap == mapName
+                            Surface(
+                                color = if (isSelected) CsOrange else CsSurfaceVariant,
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .clickable { selectedSituationMap = mapName }
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) CsOrange else Color.Transparent,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                            ) {
+                                Text(
+                                    text = mapName,
+                                    color = if (isSelected) CsDarkBackground else Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Parameter 2: Side / Faction
+                    Text(
+                        text = L10n.t("side_faction"),
+                        color = CsTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("allies" to L10n.t("allies"), "rivals" to L10n.t("rivals")).forEach { (key, label) ->
+                            val isSelected = selectedSide == key
+                            val activeColor = if (key == "allies") Color(0xFF3B6790) else Color(0xFFC8821D)
+                            Surface(
+                                color = if (isSelected) activeColor else CsSurfaceVariant,
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedSide = key }
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) activeColor else Color.Transparent,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Parameter 3: Round Economy
+                    Text(
+                        text = L10n.t("economy"),
+                        color = CsTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf(
+                            "eco" to L10n.t("eco"),
+                            "force_buy" to L10n.t("force_buy"),
+                            "semi_buy" to L10n.t("semi_buy"),
+                            "full_buy" to L10n.t("full_buy")
+                        ).forEach { (key, label) ->
+                            val isSelected = selectedEconomy == key
+                            Surface(
+                                color = if (isSelected) CsOrange else CsSurfaceVariant,
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedEconomy = key }
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) CsOrange else Color.Transparent,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) CsDarkBackground else Color.White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Parameter 4: Tactical Focus/Objective
+                    Text(
+                        text = L10n.t("focus_area"),
+                        color = CsTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val focusList = listOf(
+                            "execute_a" to L10n.t("execute_a"),
+                            "execute_b" to L10n.t("execute_b"),
+                            "mid_control" to L10n.t("mid_control"),
+                            "retake_a" to L10n.t("retake_a"),
+                            "retake_b" to L10n.t("retake_b")
+                        )
+                        items(focusList) { (key, label) ->
+                            val isSelected = selectedFocus == key
+                            Surface(
+                                color = if (isSelected) CsOrange else CsSurfaceVariant,
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .clickable { selectedFocus = key }
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) CsOrange else Color.Transparent,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) CsDarkBackground else Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Parameter 5: Enemy Intel text input
+                    Text(
+                        text = L10n.t("enemy_intel"),
+                        color = CsTextSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    TextField(
+                        value = intelText,
+                        onValueChange = { intelText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("intel_input"),
+                        placeholder = { Text(L10n.t("intel_placeholder"), color = CsTextSecondary, fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = CsTextPrimary,
+                            unfocusedTextColor = CsTextPrimary,
+                            focusedContainerColor = CsSurfaceVariant,
+                            unfocusedContainerColor = CsSurfaceVariant,
+                            focusedIndicatorColor = CsOrange,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        shape = RoundedCornerShape(4.dp),
+                        singleLine = true
+                    )
+                    
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    // Action button to generate advice
+                    Button(
+                        onClick = {
+                            val sideStr = if (selectedSide == "allies") "Counter-Terrorists (CT Allies)" else "Terrorists (T Rivals)"
+                            val focusName = when (selectedFocus) {
+                                "execute_a" -> "Executing or defending A Site"
+                                "execute_b" -> "Executing or defending B Site"
+                                "mid_control" -> "Securing Mid Control"
+                                "retake_a" -> "Retaking A Site"
+                                "retake_b" -> "Retaking B Site"
+                                else -> selectedFocus
+                            }
+                            val econName = when (selectedEconomy) {
+                                "eco" -> "Economy / Saving round (Pistols only)"
+                                "force_buy" -> "Force Buy"
+                                "semi_buy" -> "Semi-Buy"
+                                "full_buy" -> "Full Buy (Rifles + Nades)"
+                                else -> selectedEconomy
+                            }
+                            
+                            val promptBuilder = StringBuilder()
+                            promptBuilder.append("Current Situation on Map **${selectedSituationMap}**:\n")
+                            promptBuilder.append("- Side Faction: ${sideStr}\n")
+                            promptBuilder.append("- Economy Situation: ${econName}\n")
+                            promptBuilder.append("- Objective Focus: ${focusName}\n")
+                            if (intelText.trim().isNotEmpty()) {
+                                promptBuilder.append("- Match Intel: ${intelText.trim()}\n")
+                            }
+                            promptBuilder.append("\nProvide specific tactical utility recommendations (specifically where to throw Smokes, Molotovs, or Flashbangs) and clear step-by-step execute instructions for this match situation.")
+                            
+                            viewModel.sendChatMessage(promptBuilder.toString())
+                            intelText = ""
+                            isSitRoomExpanded = false // Collapse to focus on the chat answer stream!
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CsOrange),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("generate_advice_button")
+                    ) {
+                        Text(
+                            text = L10n.t("analyze_scenario"),
+                            color = CsDarkBackground,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         // Preset interactive prompt pills
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
