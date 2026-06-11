@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -54,6 +55,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import android.graphics.Typeface
@@ -885,6 +887,19 @@ fun InteractiveMinimapRadar(
 ) {
     var selectedNadePin by remember(mapName) { mutableStateOf<NadeUiItem?>(null) }
 
+    // Pinch-to-zoom & Draggable Pan states for real-time tactical overview
+    var scale by remember(mapName) { mutableStateOf(1.0f) }
+    var offset by remember(mapName) { mutableStateOf(Offset.Zero) }
+
+    // Preconstruct Draw states to run butter-smooth on all phones with 0 FPS drop
+    val trajectoryPath = remember { androidx.compose.ui.graphics.Path() }
+    val borderDash = remember { PathEffect.dashPathEffect(floatArrayOf(10f, 15f)) }
+    val siteA_Dash = remember { PathEffect.dashPathEffect(floatArrayOf(10f, 6f)) }
+    val siteB_Dash = remember { PathEffect.dashPathEffect(floatArrayOf(10f, 6f)) }
+    val midDash = remember { PathEffect.dashPathEffect(floatArrayOf(5f, 5f)) }
+    val trajectoryDash = remember { PathEffect.dashPathEffect(floatArrayOf(12f, 10f)) }
+    val sweepColors = remember { listOf(CsOrange.copy(0.12f), Color.Transparent) }
+
     // Preconstruct Paint objects for drawing text elements to maximize frame rate (works on all phones, zero FPS drops)
     val siteLabelPaint = remember {
         Paint().apply {
@@ -982,8 +997,14 @@ fun InteractiveMinimapRadar(
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(mapName, nades) {
+                    .pointerInput(mapName, nades, scale, offset) {
                         detectTapGestures { tapLoc ->
+                            // Transform tap location back to normal coordinate space based on scale and offset
+                            val logicalTapLoc = Offset(
+                                x = (tapLoc.x - offset.x) / scale,
+                                y = (tapLoc.y - offset.y) / scale
+                            )
+                            
                             // 1. Check if we tapped close to any of the map's visible pins
                             var matchedPin: NadeUiItem? = null
                             var shortestDist = Float.MAX_VALUE
@@ -992,8 +1013,9 @@ fun InteractiveMinimapRadar(
                                 val normCoords = getNadeOffset(nade.id)
                                 val pinX = normCoords.x * canvasWidth
                                 val pinY = normCoords.y * canvasHeight
-                                val dist = Math.hypot((tapLoc.x - pinX).toDouble(), (tapLoc.y - pinY).toDouble()).toFloat()
-                                if (dist < 32.dp.toPx() && dist < shortestDist) {
+                                val dist = Math.hypot((logicalTapLoc.x - pinX).toDouble(), (logicalTapLoc.y - pinY).toDouble()).toFloat()
+                                // Touch target is scaled down visually, so we divide standard 32.dp hit-circle by scale
+                                if (dist < (32.dp.toPx() / scale) && dist < shortestDist) {
                                     shortestDist = dist
                                     matchedPin = nade
                                 }
@@ -1003,20 +1025,20 @@ fun InteractiveMinimapRadar(
                                 selectedNadePin = matchedPin
                             } else {
                                 // 2. Check if we clicked on Bombsite A
-                                val distToA = Math.hypot((tapLoc.x - siteAOffset.x).toDouble(), (tapLoc.y - siteAOffset.y).toDouble()).toFloat()
-                                val distToB = Math.hypot((tapLoc.x - siteBOffset.x).toDouble(), (tapLoc.y - siteBOffset.y).toDouble()).toFloat()
-                                val distToMid = Math.hypot((tapLoc.x - siteMidOffset.x).toDouble(), (tapLoc.y - siteMidOffset.y).toDouble()).toFloat()
+                                val distToA = Math.hypot((logicalTapLoc.x - siteAOffset.x).toDouble(), (logicalTapLoc.y - siteAOffset.y).toDouble()).toFloat()
+                                val distToB = Math.hypot((logicalTapLoc.x - siteBOffset.x).toDouble(), (logicalTapLoc.y - siteBOffset.y).toDouble()).toFloat()
+                                val distToMid = Math.hypot((logicalTapLoc.x - siteMidOffset.x).toDouble(), (logicalTapLoc.y - siteMidOffset.y).toDouble()).toFloat()
                                 
                                 when {
-                                    distToA < 42.dp.toPx() -> {
+                                    distToA < (42.dp.toPx() / scale) -> {
                                         onSiteFilter("A Site")
                                         selectedNadePin = null
                                     }
-                                    distToB < 42.dp.toPx() -> {
+                                    distToB < (42.dp.toPx() / scale) -> {
                                         onSiteFilter("B Site")
                                         selectedNadePin = null
                                     }
-                                    distToMid < 42.dp.toPx() -> {
+                                    distToMid < (42.dp.toPx() / scale) -> {
                                         onSiteFilter("Mid")
                                         selectedNadePin = null
                                     }
@@ -1027,214 +1049,273 @@ fun InteractiveMinimapRadar(
                             }
                         }
                     }
+                    .pointerInput(mapName) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1.0f, 5.0f)
+                            if (scale > 1.0f) {
+                                val maxOffsetX = (scale - 1.0f) * size.width
+                                val maxOffsetY = (scale - 1.0f) * size.height
+                                offset = Offset(
+                                    x = (offset.x + pan.x).coerceIn(-maxOffsetX, 0f),
+                                    y = (offset.y + pan.y).coerceIn(-maxOffsetY, 0f)
+                                )
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    }
                     .testTag("interactive_radar_canvas")
             ) {
-                // A. DRAW RADAR BG GRID LINES & CIRCLE RINGS
-                val center = Offset(size.width / 2f, size.height / 2f)
-                
-                // Blueprint background lines
-                for (radius in listOf(size.width / 6f, size.width / 3f, size.width / 1.8f)) {
-                    drawCircle(
-                        color = CsGridLines,
-                        radius = radius,
-                        style = Stroke(width = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 15f)))
-                    )
-                }
-                
-                // Sweep line
-                val sweepRad = size.width / 1.7f
-                val endSweepX = center.x + sweepRad * Math.cos(sweepAngle * Math.PI / 180).toFloat()
-                val endSweepY = center.y + sweepRad * Math.sin(sweepAngle * Math.PI / 180).toFloat()
-                
-                // Draw sonar sweep background arc
-                drawArc(
-                    brush = Brush.radialGradient(
-                        colors = listOf(CsOrange.copy(0.12f), Color.Transparent),
-                        center = center,
-                        radius = sweepRad
-                    ),
-                    startAngle = sweepAngle - 30f,
-                    sweepAngle = 30f,
-                    useCenter = true
-                )
-                
-                drawLine(
-                    color = CsOrange.copy(0.35f),
-                    start = center,
-                    end = Offset(endSweepX, endSweepY),
-                    strokeWidth = 2f
-                )
-
-                // B. DRAW MAP BLUEPRINT SCHEMATIC
-                val layoutColor = Color(0xFF1E2833)
-                
-                // Basic blueprint walls mapping Standoff 2 maps dynamically
-                when (mapName) {
-                    "Sandstone" -> {
-                        // Left & Top (T-Spawn & A-Long)
-                        drawLine(color = layoutColor, start = Offset(0.12f * size.width, 0.85f * size.height), end = Offset(0.12f * size.width, 0.28f * size.height), strokeWidth = 16f)
-                        drawLine(color = layoutColor, start = Offset(0.12f * size.width, 0.28f * size.height), end = Offset(0.42f * size.width, 0.28f * size.height), strokeWidth = 16f)
-                        
-                        // Right Side path (B Stairs & Apartments)
-                        drawLine(color = layoutColor, start = Offset(0.65f * size.width, 0.85f * size.height), end = Offset(0.65f * size.width, 0.52f * size.height), strokeWidth = 16f)
-                        drawLine(color = layoutColor, start = Offset(0.65f * size.width, 0.52f * size.height), end = Offset(0.85f * size.width, 0.52f * size.height), strokeWidth = 16f)
-                        drawLine(color = layoutColor, start = Offset(0.85f * size.width, 0.52f * size.height), end = Offset(0.85f * size.width, 0.28f * size.height), strokeWidth = 16f)
-
-                        // Center pathways (Middle)
-                        drawLine(color = layoutColor, start = Offset(0.35f * size.width, 0.52f * size.height), end = Offset(0.65f * size.width, 0.52f * size.height), strokeWidth = 12f)
-                        
-                        // Spawn landmarks
-                        drawContext.canvas.nativeCanvas.drawText("T SPAWN", 0.22f * size.width, 0.88f * size.height, tSpawnPaint)
-                        drawContext.canvas.nativeCanvas.drawText("CT SPAWN", 0.50f * size.width, 0.88f * size.height, ctSpawnPaint)
-                    }
-                    "Provinces" -> {
-                        // Tunnels, Fountain, Plaza layout
-                        drawLine(color = layoutColor, start = Offset(0.15f * size.width, 0.50f * size.height), end = Offset(0.85f * size.width, 0.50f * size.height), strokeWidth = 16f)
-                        drawLine(color = layoutColor, start = Offset(0.25f * size.width, 0.25f * size.height), end = Offset(0.25f * size.width, 0.75f * size.height), strokeWidth = 16f)
-                        drawLine(color = layoutColor, start = Offset(0.75f * size.width, 0.25f * size.height), end = Offset(0.75f * size.width, 0.75f * size.height), strokeWidth = 16f)
-                    }
-                    else -> {
-                        // Generalized layout for standard representation
-                        drawLine(color = layoutColor, start = Offset(0.20f * size.width, 0.50f * size.height), end = Offset(0.80f * size.width, 0.50f * size.height), strokeWidth = 12f)
-                        drawLine(color = layoutColor, start = Offset(0.50f * size.width, 0.20f * size.height), end = Offset(0.50f * size.width, 0.80f * size.height), strokeWidth = 12f)
-                    }
-                }
-
-                // C. DRAW INTRICATE SITE ZONE GLOWS
-                // Site A
-                drawCircle(
-                    color = CsOrangeGlow.copy(0.15f),
-                    radius = 35.dp.toPx(),
-                    center = siteAOffset
-                )
-                drawCircle(
-                    color = CsOrangeGlow.copy(0.40f),
-                    radius = 35.dp.toPx(),
-                    center = siteAOffset,
-                    style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f)))
-                )
-                
-                // Site B
-                drawCircle(
-                    color = CsOrangeGlow.copy(0.15f),
-                    radius = 32.dp.toPx(),
-                    center = siteBOffset
-                )
-                drawCircle(
-                    color = CsOrangeGlow.copy(0.40f),
-                    radius = 32.dp.toPx(),
-                    center = siteBOffset,
-                    style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f)))
-                )
-                
-                // Mid
-                drawCircle(
-                    color = CsYellow.copy(0.12f),
-                    radius = 30.dp.toPx(),
-                    center = siteMidOffset
-                )
-                drawCircle(
-                    color = CsYellow.copy(0.35f),
-                    radius = 30.dp.toPx(),
-                    center = siteMidOffset,
-                    style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f)))
-                )
-
-                // Site Labels
-                drawContext.canvas.nativeCanvas.drawText("A", siteAOffset.x, siteAOffset.y + 11f, siteLabelPaint)
-                drawContext.canvas.nativeCanvas.drawText("B", siteBOffset.x, siteBOffset.y + 11f, siteLabelPaint)
-                drawContext.canvas.nativeCanvas.drawText("MID", siteMidOffset.x, siteMidOffset.y + 7f, midLabelPaint)
-
-                // D. DRAW THE FLYING TRAJECTORY ARROW IF PIN IS SELECTED
-                selectedNadePin?.let { nade ->
-                    val normTarget = getNadeOffset(nade.id)
-                    val normOrigin = getThrowerOffset(nade.id)
+                // Apply zoom & pan transformations dynamically in drawing phase using withTransform
+                withTransform({
+                    translate(offset.x, offset.y)
+                    scale(scale, scale, pivot = Offset.Zero)
+                }) {
+                    // A. DRAW RADAR BG GRID LINES & CIRCLE RINGS
+                    val center = Offset(size.width / 2f, size.height / 2f)
                     
-                    val pxOrigin = Offset(normOrigin.x * size.width, normOrigin.y * size.height)
-                    val pxTarget = Offset(normTarget.x * size.width, normTarget.y * size.height)
-                    
-                    // Draw control point for curve throwing height elevation
-                    val controlX = (pxOrigin.x + pxTarget.x) / 2f
-                    val controlY = Math.min(pxOrigin.y, pxTarget.y) - 60.dp.toPx()
-                    
-                    val path = androidx.compose.ui.graphics.Path().apply {
-                        moveTo(pxOrigin.x, pxOrigin.y)
-                        quadraticTo(controlX, controlY, pxTarget.x, pxTarget.y)
-                    }
-                    
-                    // Thrown utility arc dashed line
-                    val lineStrokeCol = when (nade.type) {
-                        "Smoke" -> Color.LightGray
-                        "Molotov" -> CsTOrange
-                        "Flash" -> CsYellow
-                        else -> CsCtBlue
-                    }
-                    
-                    drawPath(
-                        path = path,
-                        color = lineStrokeCol.copy(0.85f),
-                        style = Stroke(
-                            width = 3.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))
-                        )
-                    )
-                    
-                    // Draw Thrower Origin Dot
-                    drawCircle(color = Color.White, radius = 6.dp.toPx(), center = pxOrigin)
-                    drawCircle(color = lineStrokeCol, radius = 4.dp.toPx(), center = pxOrigin)
-                    
-                    // Draw Ripple pulse at landing
-                    drawCircle(
-                        color = lineStrokeCol.copy(pulseAlpha),
-                        radius = pulseRadius * 2.5f,
-                        center = pxTarget
-                    )
-                }
-
-                // E. DRAW PINS FOR GRENADE LINEUPS
-                nades.forEach { nade ->
-                    val normPos = getNadeOffset(nade.id)
-                    val pxX = normPos.x * size.width
-                    val pxY = normPos.y * size.height
-                    
-                    val isHovered = selectedNadePin?.id == nade.id
-                    val pinColor = when (nade.type) {
-                        "Smoke" -> Color(0xFF5AB290)
-                        "Molotov" -> Color(0xFFFF5252)
-                        "Flash" -> Color(0xFFFFEB3B)
-                        else -> Color(0xFF00B0FF)
-                    }
-                    
-                    if (isHovered) {
+                    // Blueprint background lines
+                    for (radius in listOf(size.width / 6f, size.width / 3f, size.width / 1.8f)) {
                         drawCircle(
-                            color = pinColor.copy(0.35f),
-                            radius = (8.dp.toPx() + pulseRadius),
+                            color = CsGridLines,
+                            radius = radius,
+                            style = Stroke(width = 1f / scale, pathEffect = borderDash)
+                        )
+                    }
+                    
+                    // Sweep line
+                    val sweepRad = size.width / 1.7f
+                    val endSweepX = center.x + sweepRad * Math.cos(sweepAngle * Math.PI / 180).toFloat()
+                    val endSweepY = center.y + sweepRad * Math.sin(sweepAngle * Math.PI / 180).toFloat()
+                    
+                    // Draw sonar sweep background arc (avoid color list allocations)
+                    drawArc(
+                        brush = Brush.radialGradient(
+                            colors = sweepColors,
+                            center = center,
+                            radius = sweepRad
+                        ),
+                        startAngle = sweepAngle - 30f,
+                        sweepAngle = 30f,
+                        useCenter = true
+                    )
+                    
+                    drawLine(
+                        color = CsOrange.copy(0.35f),
+                        start = center,
+                        end = Offset(endSweepX, endSweepY),
+                        strokeWidth = 2f / scale
+                    )
+
+                    // B. DRAW MAP BLUEPRINT SCHEMATIC
+                    val layoutColor = Color(0xFF1E2833)
+                    val mainStroke = 16f / scale
+                    val pathStroke = 12f / scale
+                    
+                    // Basic blueprint walls mapping Standoff 2 maps dynamically
+                    when (mapName) {
+                        "Sandstone" -> {
+                            // Left & Top (T-Spawn & A-Long)
+                            drawLine(color = layoutColor, start = Offset(0.12f * size.width, 0.85f * size.height), end = Offset(0.12f * size.width, 0.28f * size.height), strokeWidth = mainStroke)
+                            drawLine(color = layoutColor, start = Offset(0.12f * size.width, 0.28f * size.height), end = Offset(0.42f * size.width, 0.28f * size.height), strokeWidth = mainStroke)
+                            
+                            // Right Side path (B Stairs & Apartments)
+                            drawLine(color = layoutColor, start = Offset(0.65f * size.width, 0.85f * size.height), end = Offset(0.65f * size.width, 0.52f * size.height), strokeWidth = mainStroke)
+                            drawLine(color = layoutColor, start = Offset(0.65f * size.width, 0.52f * size.height), end = Offset(0.85f * size.width, 0.52f * size.height), strokeWidth = mainStroke)
+                            drawLine(color = layoutColor, start = Offset(0.85f * size.width, 0.52f * size.height), end = Offset(0.85f * size.width, 0.28f * size.height), strokeWidth = mainStroke)
+
+                            // Center pathways (Middle)
+                            drawLine(color = layoutColor, start = Offset(0.35f * size.width, 0.52f * size.height), end = Offset(0.65f * size.width, 0.52f * size.height), strokeWidth = pathStroke)
+                            
+                            // Spawn landmarks
+                            drawContext.canvas.nativeCanvas.drawText("T SPAWN", 0.22f * size.width, 0.88f * size.height, tSpawnPaint)
+                            drawContext.canvas.nativeCanvas.drawText("CT SPAWN", 0.50f * size.width, 0.88f * size.height, ctSpawnPaint)
+                        }
+                        "Provinces" -> {
+                            // Tunnels, Fountain, Plaza layout
+                            drawLine(color = layoutColor, start = Offset(0.15f * size.width, 0.50f * size.height), end = Offset(0.85f * size.width, 0.50f * size.height), strokeWidth = mainStroke)
+                            drawLine(color = layoutColor, start = Offset(0.25f * size.width, 0.25f * size.height), end = Offset(0.25f * size.width, 0.75f * size.height), strokeWidth = mainStroke)
+                            drawLine(color = layoutColor, start = Offset(0.75f * size.width, 0.25f * size.height), end = Offset(0.75f * size.width, 0.75f * size.height), strokeWidth = mainStroke)
+                        }
+                        else -> {
+                            // Generalized layout for standard representation
+                            drawLine(color = layoutColor, start = Offset(0.20f * size.width, 0.50f * size.height), end = Offset(0.80f * size.width, 0.50f * size.height), strokeWidth = pathStroke)
+                            drawLine(color = layoutColor, start = Offset(0.50f * size.width, 0.20f * size.height), end = Offset(0.50f * size.width, 0.80f * size.height), strokeWidth = pathStroke)
+                        }
+                    }
+
+                    // C. DRAW INTRICATE SITE ZONE GLOWS
+                    // Site A
+                    drawCircle(
+                        color = CsOrangeGlow.copy(0.15f),
+                        radius = 35.dp.toPx() / scale,
+                        center = siteAOffset
+                    )
+                    drawCircle(
+                        color = CsOrangeGlow.copy(0.40f),
+                        radius = 35.dp.toPx() / scale,
+                        center = siteAOffset,
+                        style = Stroke(width = 2f / scale, pathEffect = siteA_Dash)
+                    )
+                    
+                    // Site B
+                    drawCircle(
+                        color = CsOrangeGlow.copy(0.15f),
+                        radius = 32.dp.toPx() / scale,
+                        center = siteBOffset
+                    )
+                    drawCircle(
+                        color = CsOrangeGlow.copy(0.40f),
+                        radius = 32.dp.toPx() / scale,
+                        center = siteBOffset,
+                        style = Stroke(width = 2f / scale, pathEffect = siteB_Dash)
+                    )
+                    
+                    // Mid
+                    drawCircle(
+                        color = CsYellow.copy(0.12f),
+                        radius = 30.dp.toPx() / scale,
+                        center = siteMidOffset
+                    )
+                    drawCircle(
+                        color = CsYellow.copy(0.35f),
+                        radius = 30.dp.toPx() / scale,
+                        center = siteMidOffset,
+                        style = Stroke(width = 1.5f / scale, pathEffect = midDash)
+                    )
+
+                    // Site Labels - scale-corrected shifts
+                    drawContext.canvas.nativeCanvas.drawText("A", siteAOffset.x, siteAOffset.y + (11f / scale), siteLabelPaint)
+                    drawContext.canvas.nativeCanvas.drawText("B", siteBOffset.x, siteBOffset.y + (11f / scale), siteLabelPaint)
+                    drawContext.canvas.nativeCanvas.drawText("MID", siteMidOffset.x, siteMidOffset.y + (7f / scale), midLabelPaint)
+
+                    // D. DRAW THE FLYING TRAJECTORY ARROW IF PIN IS SELECTED
+                    selectedNadePin?.let { nade ->
+                        val normTarget = getNadeOffset(nade.id)
+                        val normOrigin = getThrowerOffset(nade.id)
+                        
+                        val pxOrigin = Offset(normOrigin.x * size.width, normOrigin.y * size.height)
+                        val pxTarget = Offset(normTarget.x * size.width, normTarget.y * size.height)
+                        
+                        // Draw control point for curve throwing height elevation
+                        val controlX = (pxOrigin.x + pxTarget.x) / 2f
+                        val controlY = Math.min(pxOrigin.y, pxTarget.y) - 60.dp.toPx()
+                        
+                        // Clear and rebuild trajectoryPath to avoid allocation overhead
+                        trajectoryPath.reset()
+                        trajectoryPath.moveTo(pxOrigin.x, pxOrigin.y)
+                        trajectoryPath.quadraticTo(controlX, controlY, pxTarget.x, pxTarget.y)
+                        
+                        // Thrown utility arc dashed line
+                        val lineStrokeCol = when (nade.type) {
+                            "Smoke" -> Color.LightGray
+                            "Molotov" -> CsTOrange
+                            "Flash" -> CsYellow
+                            else -> CsCtBlue
+                        }
+                        
+                        drawPath(
+                            path = trajectoryPath,
+                            color = lineStrokeCol.copy(0.85f),
+                            style = Stroke(
+                                width = 3.dp.toPx() / scale,
+                                pathEffect = trajectoryDash
+                            )
+                        )
+                        
+                        // Draw Thrower Origin Dot
+                        drawCircle(color = Color.White, radius = 6.dp.toPx() / scale, center = pxOrigin)
+                        drawCircle(color = lineStrokeCol, radius = 4.dp.toPx() / scale, center = pxOrigin)
+                        
+                        // Draw Ripple pulse at landing
+                        drawCircle(
+                            color = lineStrokeCol.copy(pulseAlpha),
+                            radius = (pulseRadius * 2.5f) / scale,
+                            center = pxTarget
+                        )
+                    }
+
+                    // E. DRAW PINS FOR GRENADE LINEUPS
+                    nades.forEach { nade ->
+                        val normPos = getNadeOffset(nade.id)
+                        val pxX = normPos.x * size.width
+                        val pxY = normPos.y * size.height
+                        
+                        val isHovered = selectedNadePin?.id == nade.id
+                        val pinColor = when (nade.type) {
+                            "Smoke" -> Color(0xFF5AB290)
+                            "Molotov" -> Color(0xFFFF5252)
+                            "Flash" -> Color(0xFFFFEB3B)
+                            else -> Color(0xFF00B0FF)
+                        }
+                        
+                        if (isHovered) {
+                            drawCircle(
+                                color = pinColor.copy(0.35f),
+                                radius = (8.dp.toPx() + pulseRadius) / scale,
+                                center = Offset(pxX, pxY)
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 9.dp.toPx() / scale,
+                                center = Offset(pxX, pxY),
+                                style = Stroke(width = 2.dp.toPx() / scale)
+                            )
+                        } else {
+                            drawCircle(
+                                color = pinColor.copy(0.2f),
+                                radius = 12.dp.toPx() / scale,
+                                center = Offset(pxX, pxY)
+                            )
+                        }
+                        
+                        drawCircle(
+                            color = pinColor,
+                            radius = 6.dp.toPx() / scale,
                             center = Offset(pxX, pxY)
                         )
                         drawCircle(
+                            color = CsDarkBackground,
+                            radius = 2.dp.toPx() / scale,
+                            center = Offset(pxX, pxY)
+                        )
+                    }
+                }
+            }
+            
+            // Zoom reset indicator
+            if (scale > 1.0f) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CsSurface.copy(0.85f)),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, CsOrange.copy(0.6f)),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .clickable {
+                            scale = 1.0f
+                            offset = Offset.Zero
+                        }
+                        .testTag("reset_zoom_chip")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Reset Zoom",
+                            tint = CsOrange,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (L10n.currentLang == "Türkçe") "SIFIRLA" else if (L10n.currentLang == "Русский") "СБРОС" else "RESET ZOOM",
                             color = Color.White,
-                            radius = 9.dp.toPx(),
-                            center = Offset(pxX, pxY),
-                            style = Stroke(width = 2.dp.toPx())
-                        )
-                    } else {
-                        drawCircle(
-                            color = pinColor.copy(0.2f),
-                            radius = 12.dp.toPx(),
-                            center = Offset(pxX, pxY)
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    
-                    drawCircle(
-                        color = pinColor,
-                        radius = 6.dp.toPx(),
-                        center = Offset(pxX, pxY)
-                    )
-                    drawCircle(
-                        color = CsDarkBackground,
-                        radius = 2.dp.toPx(),
-                        center = Offset(pxX, pxY)
-                    )
                 }
             }
             
